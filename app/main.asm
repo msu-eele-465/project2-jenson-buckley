@@ -23,9 +23,16 @@ StopWDT     mov.w   #WDTPW|WDTHOLD,&WDTCTL  ; Stop watchdog timer
 ;-------------------------------------------------------------------------------
 ; Main loop here (Timer or Delay can be move dto the top to pick which method it uses)
 ;-------------------------------------------------------------------------------
-SetupP1:     
+SetupLED:     
         bic.b   #BIT0,&P1OUT            ; Clear P1.0 output
         bis.b   #BIT0,&P1DIR            ; P1.0 output
+        bic.w   #LOCKLPM5,&PM5CTL0      ; Unlock I/O pins
+
+SetupPorts:     
+        bic.b   #BIT0,&P2OUT            ; Clear P2.0 output
+        bic.b   #BIT1,&P2OUT            ; Clear P2.1 output
+        bis.b   #BIT0,&P2DIR            ; P2.0 output
+        bis.b   #BIT1,&P2DIR            ; P2.1 output
         bic.w   #LOCKLPM5,&PM5CTL0      ; Unlock I/O pins
 
 SetupHeatbeatTimer:		
