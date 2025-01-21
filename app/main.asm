@@ -31,8 +31,8 @@ SetupLED:
 
 ; SCL on P2.0 and SDA on P2.1
 SetupPorts:     
-        bic.b   #BIT0,&P2OUT            ; Clear P2.0 output
-        bic.b   #BIT1,&P2OUT            ; Clear P2.1 output
+        bis.b   #BIT0,&P2OUT            ; Clear P2.0 output
+        bis.b   #BIT1,&P2OUT            ; Clear P2.1 output
         bis.b   #BIT0,&P2DIR            ; P2.0 output
         bis.b   #BIT1,&P2DIR            ; P2.1 output
         bic.w   #LOCKLPM5,&PM5CTL0      ; Unlock I/O pins
@@ -52,16 +52,53 @@ SetupHeatbeatTimer:
 		; Enable global interrupts
 		bis.w	#GIE, SR
 
-Delay:
-        xor.b   #BIT0, &P1OUT          ; Toggle P1.0 every 0.5s
+Main:
+        mov.b   #0,R14
+        call    #i2c_start
+        call    #ClkPeriod                   ; Jump to main
+        bis.b   #BIT1,&P2OUT
+        jmp     Main
+
+;-------------------------------------------------------------------------------
+; Subroutines
+;-------------------------------------------------------------------------------
+
+; "clock" used for I2C bit banging
+ClkPeriod:
         mov.w   #1000, R15             ; Outer loop count
 L1:
         dec.w   R15                    ; Decrement R15
         jnz     L1                     ;loop done?
+        ret
+
+; send I2C start condition (assumes both SDA and SCL are high)
+i2c_start:
+        ;bic.b   #BIT1,&P2OUT    ; drive SDA low
+        mov.b   0(R14),&P2OUT 
+        call    #ClkPeriod
+        ret
+
+; send I2C stop condition (assumes SDA is low and SCL is high)
+i2c_stop:
+        bis.b   #BIT1,&P2OUT    ; drive SDA high
+        call    #ClkPeriod
+        ret
+
+; send acknowledge bit (drive SDA low on 9th clock edge for AWK; leave high for no AWK)
+i2c_tx_ack:
+        bic.b   #BIT1,&P2OUT    ; drive SDA low
+        call    #ClkPeriod
+        ret
+
+; send a byte stored in R14
+i2c_tx_byte:
+        ret
 
 
-Main:
-        jmp     Main                   ; Jump to timer subroutine
+
+
+
+
 
 ;-------------------------------------------------------------------------------
 ; Interrupt Service Routines
