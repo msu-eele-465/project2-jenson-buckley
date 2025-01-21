@@ -43,6 +43,13 @@ SetupHeatbeatTimer:
 		; Enable global interrupts
 		bis.w	#GIE, SR
 
+Delay:
+        xor.b   #BIT0, &P1OUT          ; Toggle P1.0 every 0.5s
+        mov.w   #1000, R15             ; Outer loop count
+L1:
+        dec.w   R15                    ; Decrement R15
+        jnz     L1                     ;loop done?
+
 
 Main:
         jmp     Main                   ; Jump to timer subroutine
