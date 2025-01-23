@@ -31,8 +31,8 @@ SetupLED:
 
 ; SCL on P2.0 and SDA on P2.1
 SetupPorts:     
-        bis.b   #BIT0,&P2OUT            ; Clear P2.0 output
-        bis.b   #BIT1,&P2OUT            ; Clear P2.1 output
+        bis.b   #BIT0,&P2OUT            ; Set P2.0 output
+        bis.b   #BIT1,&P2OUT            ; Set P2.1 output
         bis.b   #BIT0,&P2DIR            ; P2.0 output
         bis.b   #BIT1,&P2DIR            ; P2.1 output
         bic.w   #LOCKLPM5,&PM5CTL0      ; Unlock I/O pins
@@ -53,10 +53,10 @@ SetupHeatbeatTimer:
 		bis.w	#GIE, SR
 
 Main:
-        mov.b   #0,R14
+        mov.b   #00011100b, R14
         call    #i2c_start
-        call    #ClkPeriod                   ; Jump to main
-        bis.b   #BIT1,&P2OUT
+        call    #i2c_tx_byte
+        call    #i2c_stop
         jmp     Main
 
 ;-------------------------------------------------------------------------------
@@ -66,22 +66,53 @@ Main:
 ; "clock" used for I2C bit banging
 ClkPeriod:
         mov.w   #1000, R15             ; Outer loop count
-L1:
+        bis.b   #BIT0, &P2OUT          ; drive SCL high
+CP1:
         dec.w   R15                    ; Decrement R15
-        jnz     L1                     ;loop done?
+        jnz     CP1                     ;loop done?
+        bic.b   #BIT0, &P2OUT          ; drive SCL high
+        mov.w   #1000, R15             ; Outer loop count
+CP2:
+        dec.w   R15                    ; Decrement R15
+        jnz     CP2                     ;loop done?
         ret
 
 ; send I2C start condition (assumes both SDA and SCL are high)
 i2c_start:
-        ;bic.b   #BIT1,&P2OUT    ; drive SDA low
-        mov.b   0(R14),&P2OUT 
-        call    #ClkPeriod
+        mov.w   #500, R15              ; Outer loop count
+        bis.b   #BIT0, &P2OUT          ; drive SCL high
+START1:
+        dec.w   R15                    ; Decrement R15
+        jnz     START1                 ; loop done?
+        bic.b   #BIT1, &P2OUT          ; drive SDA low
+        mov.w   #500, R15              ; Outer loop count
+START2:
+        dec.w   R15                    ; Decrement R15
+        jnz     START2                 ;loop done?
+        bic.b   #BIT0, &P2OUT          ; drive SCL low
+        mov.w   #1000, R15             ; Outer loop count
+START3:
+        dec.w   R15                    ; Decrement R15
+        jnz     START3                  ;loop done?
         ret
 
 ; send I2C stop condition (assumes SDA is low and SCL is high)
-i2c_stop:
-        bis.b   #BIT1,&P2OUT    ; drive SDA high
-        call    #ClkPeriod
+i2c_stop
+        mov.w   #500, R15              ; Outer loop count
+        bis.b   #BIT0, &P2OUT          ; drive SCL high
+STOP1:
+        dec.w   R15                    ; Decrement R15
+        jnz     STOP1                  ; loop done?
+        bis.b   #BIT1, &P2OUT          ; drive SDA high
+        mov.w   #500, R15              ; Outer loop count
+STOP2:
+        dec.w   R15                    ; Decrement R15
+        jnz     STOP2                 ; loop done?
+        bic.b   #BIT0, &P2OUT          ; drive SCL low
+        mov.w   #1000, R15             ; Outer loop count
+STOP3:
+        dec.w   R15                    ; Decrement R15
+        jnz     STOP3                  ; loop done?
         ret
 
 ; send acknowledge bit (drive SDA low on 9th clock edge for AWK; leave high for no AWK)
@@ -90,9 +121,46 @@ i2c_tx_ack:
         call    #ClkPeriod
         ret
 
-; send a byte stored in R14
+; send a byte stored in R14 
 i2c_tx_byte:
+        mov.b   #10000000, R13
+TX2:
+        bit.b   R13, R14
+        jz      clear
+        jmp     set
+clear:
+        bic.b   #BIT1,&P2OUT
+        jmp     end
+set:
+        bis.b   #BIT1,&P2OUT
+        jmp     end
+end:
+        call    #ClkPeriod
+        CLRC
+        rrc.b   R13
+        jnc     TX2
+        ret   
+
+; 
+i2c_tx_ack:
+i2c_stop
+        mov.w   #500, R15              ; Outer loop count
+        bis.b   #BIT0, &P2OUT          ; drive SCL high
+STOP1:
+        dec.w   R15                    ; Decrement R15
+        jnz     STOP1                  ; loop done?
+        bis.b   #BIT1, &P2OUT          ; drive SDA high
+        mov.w   #500, R15              ; Outer loop count
+STOP2:
+        dec.w   R15                    ; Decrement R15
+        jnz     STOP2                 ; loop done?
+        bic.b   #BIT0, &P2OUT          ; drive SCL low
+        mov.w   #1000, R15             ; Outer loop count
+STOP3:
+        dec.w   R15                    ; Decrement R15
+        jnz     STOP3                  ; loop done?
         ret
+
 
 
 
