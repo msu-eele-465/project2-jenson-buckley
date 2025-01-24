@@ -80,17 +80,17 @@ CP2:
 
 ; "clock" used for I2C bit banging that DRIVES SDA HIGH
 ClkDataHigh:
-        mov.w   #250, R15              ; Outer loop count
-        bic.b   #BIT0, &P2OUT          ; drive SCL low
+        mov.w   #500, R15               ; Outer loop count
+        bic.b   #BIT0, &P2OUT           ; drive SCL low
 CDH1:
-        dec.w   R15                    ; Decrement R15
+        dec.w   R15                     ; Decrement R15
         jnz     CDH1                    ; loop done?
-        bis.b   #BIT1, &P2OUT          ; drive SDA high
-        mov.w   #750, R15              ; Outer loop count
+        bis.b   #BIT1, &P2OUT           ; drive SDA high
+        mov.w   #500, R15               ; Outer loop count
 CDH2:
-        dec.w   R15                    ; Decrement R15
+        dec.w   R15                     ; Decrement R15
         jnz     CDH2                    ; loop done?
-        bic.b   #BIT0, &P2OUT          ; drive SCL high
+        bis.b   #BIT0, &P2OUT           ; drive SCL high
         mov.w   #1000, R15              ; Outer loop count
 CDH3:
         dec.w   R15                    ; Decrement R15
@@ -99,20 +99,20 @@ CDH3:
 
 ; "clock" used for I2C bit banging that DRIVES SDA LOW
 ClkDataLow:
-        mov.w   #250, R15              ; Outer loop count
-        bic.b   #BIT0, &P2OUT          ; drive SCL low
+        mov.w   #500, R15               ; Outer loop count
+        bic.b   #BIT0, &P2OUT           ; drive SCL low
 CDL1:
-        dec.w   R15                    ; Decrement R15
+        dec.w   R15                     ; Decrement R15
         jnz     CDL1                    ; loop done?
-        bis.b   #BIT1, &P2OUT          ; drive SDA high
-        mov.w   #750, R15              ; Outer loop count
+        bic.b   #BIT1, &P2OUT           ; drive SDA low
+        mov.w   #500, R15               ; Outer loop count
 CDL2:
-        dec.w   R15                    ; Decrement R15
+        dec.w   R15                     ; Decrement R15
         jnz     CDL2                    ; loop done?
-        bic.b   #BIT0, &P2OUT          ; drive SCL high
+        bis.b   #BIT0, &P2OUT           ; drive SCL high
         mov.w   #1000, R15              ; Outer loop count
 CDL3:
-        dec.w   R15                    ; Decrement R15
+        dec.w   R15                     ; Decrement R15
         jnz     CDL3                    ; loop done?
         ret
 
@@ -120,41 +120,34 @@ CDL3:
 i2c_start:
         mov.w   #1000, R15             ; Outer loop count
         bis.b   #BIT1, &P2OUT          ; drive SDA high
-        bic.b   #BIT0, &P2OUT          ; drive SCL low
 START1:
         dec.w   R15                    ; Decrement R15
         jnz     START1                 ; loop done?
-        bis.b   #BIT0, &P2OUT          ; drive SCL high
-        mov.w   #500, R15              ; Outer loop count
+        bic.b   #BIT1, &P2OUT          ; drive SDA low
+        mov.w   #1000, R15             ; Outer loop count
 START2:
         dec.w   R15                    ; Decrement R15
         jnz     START2                 ; loop done?
-        bic.b   #BIT1, &P2OUT          ; drive SDA low
-        mov.w   #500, R15              ; Outer loop count
-START3:
-        dec.w   R15                    ; Decrement R15
-        jnz     START3                 ; loop done?
         ret
 
 ; send I2C stop condition (assumes SCL is high)
-i2c_stop
-
+i2c_stop:
         mov.w   #1000, R15             ; Outer loop count
         bic.b   #BIT1, &P2OUT          ; drive SDA low
         bic.b   #BIT0, &P2OUT          ; drive SCL low
 STOP1:
         dec.w   R15                    ; Decrement R15
-        jnz     STOP1                 ; loop done?
+        jnz     STOP1                  ; loop done?
         bis.b   #BIT0, &P2OUT          ; drive SCL high
         mov.w   #500, R15              ; Outer loop count
 STOP2:
         dec.w   R15                    ; Decrement R15
-        jnz     STOP2                 ; loop done?
+        jnz     STOP2                  ; loop done?
         bis.b   #BIT1, &P2OUT          ; drive SDA high
-        mov.w   #500, R15              ; Outer loop count
+        mov.w   #500, R15             ; Outer loop count
 STOP3:
         dec.w   R15                    ; Decrement R15
-        jnz     STOP3                 ; loop done?
+        jnz     STOP3                  ; loop done?
         ret
 
 ; receive AWK bit (release SDA on 9th clock edge; stays low = AWK; goes high = NAWK)
@@ -168,20 +161,20 @@ i2c_ack:
 ; send a byte stored in R14 
 i2c_tx_byte:
         mov.b   #10000000, R13
-TX2:
+TX1:
         bit.b   R13, R14
-        jz      clear
-        jmp     set
-clear:
+        jz      TXCLEAR
+        jmp     TXSET
+TXCLEAR:
         call    #ClkDataLow
-        jmp     end
-set:
+        jmp     TXEND
+TXSET:
         call    #ClkDataHigh
-        jmp     end
-end:
+        jmp     TXEND
+TXEND:
         CLRC
         rrc.b   R13
-        jnc     TX2
+        jnc     TX1
         ret
 
 ;-------------------------------------------------------------------------------
