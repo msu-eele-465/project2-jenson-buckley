@@ -53,14 +53,11 @@ SetupHeatbeatTimer:
 		bis.w	#GIE, SR
 
 Main:
-        mov.b   #11000000b, R14         ; h60 address with write bit high
+        mov.b   #11000001b, R14         ; h60 address with write bit high
         call    #i2c_start
         call    #i2c_tx_byte
-        call    #i2c_tx_ack
-        call    #i2c_tx_byte
-        call    #i2c_tx_ack
-        call    #i2c_tx_byte
-        call    #i2c_tx_ack
+        call    #i2c_rx_byte
+        call    #i2c_rx_ack
 EJECT   call    #i2c_stop
         jmp     Main
 
@@ -122,6 +119,7 @@ CDL3:
 
 ; send I2C start condition (assumes SCL is high)
 i2c_start:
+        bis.b   #BIT1,&P2DIR           ; SDA as output
         mov.w   #1000, R15             ; Outer loop count
         bis.b   #BIT1, &P2OUT          ; drive SDA high
 START1:
@@ -216,23 +214,42 @@ i2c_rx_ack:
 
 ; receive a byte into R16
 i2c_rx_byte:
-        mov.b   #10000000, R13
+        mov.w   #1,R13                  ; clear receiving register (1 to check for carry for stop condition)
+        bic.b   #BIT1,&P2DIR            ; SDA as input
+        bis.b   #BIT1, &P2REN           ; enable internal resisitor 
+        bis.b   #BIT1, &P2OUT           ; set pullup resistor
+RXSTART:
+        mov.w   #1000, R15              ; Outer loop count
+        bic.b   #BIT0, &P2OUT           ; drive SCL low
 RX1:
-        bit.b   R13, R14
-        jz      RXCLEAR
-        jmp     RXSET
-RXCLEAR:
-        call    #ClkDataLow
-        jmp     RXEND
-RXSET:
-        call    #ClkDataHigh
-        jmp     RXEND
-RXEND:
-        CLRC
-        rrc.b   R13
-        jnc     RX1
+        dec.w   R15                     ; Decrement R15
+        jnz     RX1                     ; loop done?
+        bis.b   #BIT0, &P2OUT           ; drive SCL high
+        mov.w   #500, R15               ; Outer loop count
+RX2:
+        dec.w   R15                     ; Decrement R15
+        jnz     RX2                     ; loop done?
+        mov.b   #00000010b, R13         ; set SDA mask
+        bit.b   &P2IN, R13              ; read SDA
+        CLRC                            ; clear carry bit
+        rla.b   R13                     ; shift data over to make room for new bit
+        jc      RXEND3                  ; stop reading bits
+        jnz     RXHIGH       
+        jz      RXLOW           
+RXHIGH:
+        bis.b   #0,&R16                  ; set
+        jmp     RXEND1
+RXLOW:
+        bic.b   #0,&R16                  ; set
+        jmp     RXEND1
+RXEND1:
+        mov.w   #500, R15               ; Outer loop count
+RXEND2:
+        dec.w   R15                     ; Decrement R15
+        jnz     RXEND2                  ; loop done?
+        jmp     RXSTART
+RXEND3:
         ret
-
 
 ;-------------------------------------------------------------------------------
 ; Interrupt Service Routines
