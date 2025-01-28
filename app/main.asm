@@ -53,11 +53,15 @@ SetupHeatbeatTimer:
 		bis.w	#GIE, SR
 
 Main:
-        mov.b   #10011001b, R14
+        mov.b   #11000000b, R14         ; h60 address with write bit high
         call    #i2c_start
         call    #i2c_tx_byte
-        call    #i2c_ack
-        call    #i2c_stop
+        call    #i2c_tx_ack
+        call    #i2c_tx_byte
+        call    #i2c_tx_ack
+        call    #i2c_tx_byte
+        call    #i2c_tx_ack
+EJECT   call    #i2c_stop
         jmp     Main
 
 ;-------------------------------------------------------------------------------
@@ -151,11 +155,36 @@ STOP3:
         ret
 
 ; receive AWK bit (release SDA on 9th clock edge; stays low = AWK; goes high = NAWK)
-i2c_ack:
+i2c_tx_ack:
         bic.b   #BIT1,&P2DIR            ; SDA as input
-        call    #ClkPeriod
-        bic.B   #BIT1,&P2OUT            ; drive SDA low
+        bis.b   #BIT1, &P2REN           ; enable internal resisitor 
+        bis.b   #BIT1, &P2OUT           ; set pullup resistor
+        mov.w   #1000, R15              ; Outer loop count
+        bic.b   #BIT0, &P2OUT           ; drive SCL low
+TXACK1:
+        dec.w   R15                     ; Decrement R15
+        jnz     TXACK1                  ; loop done?
+        bis.b   #BIT0, &P2OUT           ; drive SCL high
+        mov.w   #500, R15               ; Outer loop count
+TXACK2:
+        dec.w   R15                     ; Decrement R15
+        jnz     TXACK2                  ; loop done?
+        mov.b   #00000010b, R13         ; set SDA mask
+        bit.b   &P2IN, R13              ; read SDA
+        jnz     TXNAWK1                  ; run thorugh NAWK routine if necessary
+        mov.w   #500, R15               ; Outer loop count
+TXACK3:  
+        dec.w   R15                     ; Decrement R15
+        jnz     TXACK3                  ; loop done?
+        bic.b   #BIT1,&P2OUT            ; drive SDA low
         bis.b   #BIT1,&P2DIR            ; SDA as output
+        ret
+TXNAWK1:
+        mov.w   #500, R15               ; Outer loop count
+TXNAWK2:
+        dec.w   R15                     ; Decrement R15
+        jnz     TXNAWK2                 ; loop done?
+        jmp     EJECT
         ret
 
 ; send a byte stored in R14 
@@ -176,6 +205,34 @@ TXEND:
         rrc.b   R13
         jnc     TX1
         ret
+
+; send AWK bit (pull SDA on 9th clock edge; stays low = AWK; goes high = NAWK)
+i2c_rx_ack:
+        bis.b   #BIT1,&P2DIR            ; SDA as output
+        bic.B   #BIT1,&P2OUT            ; drive SDA low
+        call    #ClkPeriod
+        bic.b   #BIT1,&P2DIR            ; SDA as input
+        ret
+
+; receive a byte into R16
+i2c_rx_byte:
+        mov.b   #10000000, R13
+RX1:
+        bit.b   R13, R14
+        jz      RXCLEAR
+        jmp     RXSET
+RXCLEAR:
+        call    #ClkDataLow
+        jmp     RXEND
+RXSET:
+        call    #ClkDataHigh
+        jmp     RXEND
+RXEND:
+        CLRC
+        rrc.b   R13
+        jnc     RX1
+        ret
+
 
 ;-------------------------------------------------------------------------------
 ; Interrupt Service Routines
