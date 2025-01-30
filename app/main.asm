@@ -27,7 +27,6 @@ StopWDT     mov.w   #WDTPW|WDTHOLD,&WDTCTL  ; Stop watchdog timer
 SetupLED:     
         bic.b   #BIT0,&P1OUT            ; Clear P1.0 output
         bis.b   #BIT0,&P1DIR            ; P1.0 output
-        bic.w   #LOCKLPM5,&PM5CTL0      ; Unlock I/O pins
 
 ; SCL on P2.0 and SDA on P2.1
 SetupPorts:     
@@ -53,11 +52,23 @@ SetupHeatbeatTimer:
 		bis.w	#GIE, SR
 
 Main:
-        mov.b   #11000001b, R14         ; h60 address with write bit high
+        mov.b   #11010000, R14          ; 1101000b address with r/w bit low (write)
         call    #i2c_start
-        call    #i2c_tx_byte
+        call    #i2c_tx_byte            ; slave address
+        call    #i2c_tx_ack
+
+        mov.b   #00000000, R14          ; address of seconds register
+        call    #i2c_tx_byte            ; seconds register
+        call    #i2c_tx_ack
+
+        mov.b   #11010001, R14          ; 1101000b address with r/w bit high (read)
+        call    #i2c_start
+        call    #i2c_tx_byte            ; slave address
+        call    #i2c_tx_ack
+
         call    #i2c_rx_byte
-        call    #i2c_rx_ack
+        call    #i2c_rx_nack
+
 EJECT   call    #i2c_stop
         jmp     Main
 
@@ -153,27 +164,32 @@ STOP3:
         ret
 
 ; receive AWK bit (release SDA on 9th clock edge; stays low = AWK; goes high = NAWK)
+; assumers SDA is an output, and on completion, SDA is an output again
 i2c_tx_ack:
-        bic.b   #BIT1,&P2DIR            ; SDA as input
-        bis.b   #BIT1, &P2REN           ; enable internal resisitor 
-        bis.b   #BIT1, &P2OUT           ; set pullup resistor
-        mov.w   #1000, R15              ; Outer loop count
+        mov.w   #500, R15              ; Outer loop count
         bic.b   #BIT0, &P2OUT           ; drive SCL low
 TXACK1:
         dec.w   R15                     ; Decrement R15
         jnz     TXACK1                  ; loop done?
-        bis.b   #BIT0, &P2OUT           ; drive SCL high
+        bic.b   #BIT1,&P2DIR            ; SDA as input
+        bis.b   #BIT1, &P2REN           ; enable internal resisitor 
+        bis.b   #BIT1, &P2OUT           ; set pullup resistor
         mov.w   #500, R15               ; Outer loop count
 TXACK2:
         dec.w   R15                     ; Decrement R15
         jnz     TXACK2                  ; loop done?
-        mov.b   #00000010b, R13         ; set SDA mask
-        bit.b   &P2IN, R13              ; read SDA
-        jnz     TXNAWK1                  ; run thorugh NAWK routine if necessary
+        bis.b   #BIT0, &P2OUT           ; drive SCL high
         mov.w   #500, R15               ; Outer loop count
-TXACK3:  
+TXACK3:
         dec.w   R15                     ; Decrement R15
         jnz     TXACK3                  ; loop done?
+        mov.b   #00000010b, R13         ; set SDA mask
+        bit.b   &P2IN, R13              ; read SDA
+        jnz     TXNAWK1                 ; run thorugh NAWK routine if necessary
+        mov.w   #500, R15               ; Outer loop count
+TXACK4:  
+        dec.w   R15                     ; Decrement R15
+        jnz     TXACK4                  ; loop done?
         bic.b   #BIT1,&P2OUT            ; drive SDA low
         bis.b   #BIT1,&P2DIR            ; SDA as output
         ret
@@ -182,6 +198,7 @@ TXNAWK1:
 TXNAWK2:
         dec.w   R15                     ; Decrement R15
         jnz     TXNAWK2                 ; loop done?
+        bis.b   #BIT1,&P2DIR            ; SDA as output
         jmp     EJECT
         ret
 
@@ -204,20 +221,26 @@ TXEND:
         jnc     TX1
         ret
 
-; send AWK bit (pull SDA on 9th clock edge; stays low = AWK; goes high = NAWK)
+; send AWK bit (pull SDA low on 9th clock edge; stays low = AWK; goes high = NAWK)
 i2c_rx_ack:
-        bis.b   #BIT1,&P2DIR            ; SDA as output
-        bic.B   #BIT1,&P2OUT            ; drive SDA low
+        bic.b   #BIT1,&P2OUT            ; drive SDA low
         call    #ClkPeriod
-        bic.b   #BIT1,&P2DIR            ; SDA as input
+        ret
+
+; send NAWK bit (pull SDA high on 9th clock edge; stays low = AWK; goes high = NAWK)
+i2c_rx_nack:
+        bis.b   #BIT1,&P2OUT            ; drive SDA high
+        call    #ClkPeriod
         ret
 
 ; receive a byte into R12
+; assumers SDA is an output, and on completion, SDA is an output again
 i2c_rx_byte:
         mov.w   #1,R13                  ; clear receiving register (1 to check for carry for stop condition)
         bic.b   #BIT1,&P2DIR            ; SDA as input
         bis.b   #BIT1, &P2REN           ; enable internal resisitor 
         bis.b   #BIT1, &P2OUT           ; set pullup resistor
+        bis.b   #BIT0, &P2OUT           ; drive SCL low
 RXSTART:
         mov.w   #1000, R15              ; Outer loop count
         bic.b   #BIT0, &P2OUT           ; drive SCL low
@@ -229,26 +252,27 @@ RX1:
 RX2:
         dec.w   R15                     ; Decrement R15
         jnz     RX2                     ; loop done?
-        mov.b   #00000010b, R13         ; set SDA mask
-        bit.b   &P2IN, R13              ; read SDA
         CLRC                            ; clear carry bit
         rla.b   R13                     ; shift data over to make room for new bit
-        jc      RXEND3                  ; stop reading bits
+        mov.b   #00000010b, R13         ; set SDA mask
+        bit.b   &P2IN, R13              ; read SDA
         jnz     RXHIGH       
         jz      RXLOW           
 RXHIGH:
         bis.b   #BIT0, R12             ; set
         jmp     RXEND1
 RXLOW:
-        bic.b   #BIT0, R12             ; set
+        bic.b   #BIT0, R12             ; clear
         jmp     RXEND1
 RXEND1:
         mov.w   #500, R15               ; Outer loop count
 RXEND2:
         dec.w   R15                     ; Decrement R15
         jnz     RXEND2                  ; loop done?
+        jc      RXEND3                  ; stop reading bits
         jmp     RXSTART
 RXEND3:
+        bis.b   #BIT1,&P2DIR            ; SDA as output
         ret
 
 ;-------------------------------------------------------------------------------
