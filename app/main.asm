@@ -212,7 +212,7 @@ i2c_rx_ack:
         bic.b   #BIT1,&P2DIR            ; SDA as input
         ret
 
-; receive a byte into R16
+; receive a byte into R12
 i2c_rx_byte:
         mov.w   #1,R13                  ; clear receiving register (1 to check for carry for stop condition)
         bic.b   #BIT1,&P2DIR            ; SDA as input
@@ -237,10 +237,10 @@ RX2:
         jnz     RXHIGH       
         jz      RXLOW           
 RXHIGH:
-        bis.b   #0,&R16                  ; set
+        bis.b   #BIT0, R12             ; set
         jmp     RXEND1
 RXLOW:
-        bic.b   #0,&R16                  ; set
+        bic.b   #BIT0, R12             ; set
         jmp     RXEND1
 RXEND1:
         mov.w   #500, R15               ; Outer loop count
