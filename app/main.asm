@@ -62,6 +62,7 @@ Main:
         call    #i2c_tx_ack
 
         mov.b   #11010001, R14          ; 1101000b address with r/w bit high (read)
+        call    #i2c_stop
         call    #i2c_start
         call    #i2c_tx_byte            ; slave address
         call    #i2c_tx_ack
@@ -192,6 +193,7 @@ TXACK4:
         jnz     TXACK4                  ; loop done?
         bic.b   #BIT1,&P2OUT            ; drive SDA low
         bis.b   #BIT1,&P2DIR            ; SDA as output
+        bic.b   #BIT1, &P2REN           ; disaable internal resisitor 
         ret
 TXNAWK1:
         mov.w   #500, R15               ; Outer loop count
@@ -199,6 +201,7 @@ TXNAWK2:
         dec.w   R15                     ; Decrement R15
         jnz     TXNAWK2                 ; loop done?
         bis.b   #BIT1,&P2DIR            ; SDA as output
+        bic.b   #BIT1, &P2REN           ; disaable internal resisitor 
         jmp     EJECT
         ret
 
@@ -223,6 +226,7 @@ TXEND:
 
 ; send AWK bit (pull SDA low on 9th clock edge; stays low = AWK; goes high = NAWK)
 i2c_rx_ack:
+
         bic.b   #BIT1,&P2OUT            ; drive SDA low
         call    #ClkPeriod
         ret
@@ -233,14 +237,14 @@ i2c_rx_nack:
         call    #ClkPeriod
         ret
 
-; receive a byte into R12
+; receive a byte into R13
 ; assumers SDA is an output, and on completion, SDA is an output again
 i2c_rx_byte:
         mov.w   #1,R13                  ; clear receiving register (1 to check for carry for stop condition)
-        bic.b   #BIT1,&P2DIR            ; SDA as input
+        mov.w   #00000010b, R12         ; mask to bit test P2IN
+        bic.b   #BIT1, &P2DIR           ; SDA as input
         bis.b   #BIT1, &P2REN           ; enable internal resisitor 
         bis.b   #BIT1, &P2OUT           ; set pullup resistor
-        bis.b   #BIT0, &P2OUT           ; drive SCL low
 RXSTART:
         mov.w   #1000, R15              ; Outer loop count
         bic.b   #BIT0, &P2OUT           ; drive SCL low
@@ -252,26 +256,31 @@ RX1:
 RX2:
         dec.w   R15                     ; Decrement R15
         jnz     RX2                     ; loop done?
-        CLRC                            ; clear carry bit
-        rla.b   R13                     ; shift data over to make room for new bit
-        mov.b   #00000010b, R13         ; set SDA mask
-        bit.b   &P2IN, R13              ; read SDA
+        bit.b   &P2IN, R12              ; read SDA
         jnz     RXHIGH       
         jz      RXLOW           
 RXHIGH:
-        bis.b   #BIT0, R12             ; set
+        CLRC                            ; clear carry bit
+        rla.b   R13                     ; shift data over to make room for new bit
+        bis.b   #BIT0, R13             ; set
         jmp     RXEND1
 RXLOW:
-        bic.b   #BIT0, R12             ; clear
+        CLRC                            ; clear carry bit
+        rla.b   R13                     ; shift data over to make room for new bit
+        bic.b   #BIT0, R13             ; clear
         jmp     RXEND1
 RXEND1:
+        jc      RXEND3                  ; stop reading bits
         mov.w   #500, R15               ; Outer loop count
 RXEND2:
         dec.w   R15                     ; Decrement R15
         jnz     RXEND2                  ; loop done?
-        jc      RXEND3                  ; stop reading bits
         jmp     RXSTART
 RXEND3:
+        mov.w   #500, R15               ; Outer loop count
+RXEND4:
+        dec.w   R15                     ; Decrement R15
+        jnz     RXEND4                  ; loop done?
         bis.b   #BIT1,&P2DIR            ; SDA as output
         ret
 
