@@ -52,25 +52,28 @@ SetupHeatbeatTimer:
 		bis.w	#GIE, SR
 
 Main:
-        mov.b   #11010000, R14          ; 1101000b address with r/w bit low (write)
-        call    #i2c_start
-        call    #i2c_tx_byte            ; slave address
-        call    #i2c_tx_ack
+        mov.b   #00000000, R10          ; address of register on RTC to read from
+        call    #Read                   ; read from regester defined in R10 into R13
+        NOP
 
-        mov.b   #00000000, R14          ; address of seconds register
-        call    #i2c_tx_byte            ; seconds register
-        call    #i2c_tx_ack
+        mov.b   #00000001, R10          ; address of register on RTC to read from
+        call    #Read                   ; read from regester defined in R10 into R13
+        NOP
 
-        mov.b   #11010001, R14          ; 1101000b address with r/w bit high (read)
-        call    #i2c_stop
-        call    #i2c_start
-        call    #i2c_tx_byte            ; slave address
-        call    #i2c_tx_ack
+        mov.b   #00000002, R10          ; address of register on RTC to read from
+        call    #Read                   ; read from regester defined in R10 into R13
+        NOP
 
-        call    #i2c_rx_byte
-        call    #i2c_rx_nack
+        mov.b   #00010001, R10          ; address of register on RTC to read from
+        call    #Read                   ; read from regester defined in R10 into R13
+        NOP
+
+        mov.b   #00010010, R10          ; address of register on RTC to read from
+        call    #Read                   ; read from regester defined in R10 into R13
+        NOP
 
 EJECT   call    #i2c_stop
+
         jmp     Main
 
 ;-------------------------------------------------------------------------------
@@ -282,6 +285,27 @@ RXEND4:
         dec.w   R15                     ; Decrement R15
         jnz     RXEND4                  ; loop done?
         bis.b   #BIT1,&P2DIR            ; SDA as output
+        ret
+
+Read:
+        mov.b   #11010000, R14          ; 1101000b address with r/w bit low (write)
+        call    #i2c_start
+        call    #i2c_tx_byte            ; slave address
+        call    #i2c_tx_ack
+
+        mov.b   R10, R14          ; address of seconds register
+        call    #i2c_tx_byte            ; seconds register
+        call    #i2c_tx_ack
+
+        mov.b   #11010001, R14          ; 1101000b address with r/w bit high (read)
+        call    #i2c_stop
+        call    #i2c_start
+        call    #i2c_tx_byte            ; slave address
+        call    #i2c_tx_ack
+
+        call    #i2c_rx_byte
+        call    #i2c_rx_nack
+
         ret
 
 ;-------------------------------------------------------------------------------
