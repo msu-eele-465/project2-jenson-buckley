@@ -54,23 +54,23 @@ SetupHeatbeatTimer:
 Main:
         mov.b   #00000000, R10          ; address of register on RTC to read from
         call    #Read                   ; read from regester defined in R10 into R13
-        NOP
+        mov.B   R13, Sec                ; Move seconds into memory
 
         mov.b   #00000001, R10          ; address of register on RTC to read from
         call    #Read                   ; read from regester defined in R10 into R13
-        NOP
+        mov.B   R13, Min                ; Move minutes into memory
 
         mov.b   #00000002, R10          ; address of register on RTC to read from
         call    #Read                   ; read from regester defined in R10 into R13
-        NOP
+        mov.B   R13, Hour               ; Move hours into memory
 
         mov.b   #00010001, R10          ; address of register on RTC to read from
         call    #Read                   ; read from regester defined in R10 into R13
-        NOP
+        mov.B   R13, Temp1              ; Move first bits of temp into memory
 
         mov.b   #00010010, R10          ; address of register on RTC to read from
         call    #Read                   ; read from regester defined in R10 into R13
-        NOP
+        mov.B   R13, Temp2              ; Move last bits of temp into memory 
 
 EJECT   call    #i2c_stop
 
@@ -316,6 +316,17 @@ ISR_TB0_CCR0:
 		bic.w	#CCIFG, &TB0CCTL0           ; Clear TB1 interrupt flag
 		reti
 
+;-------------------------------------------------------------------------------
+; Memory Allocation
+;-------------------------------------------------------------------------------
+        .data           ;2000h
+        .retain
+
+Sec:    .space 1
+Min:    .space 1
+Hour:   .space 1
+Temp1:  .space 1
+Temp2:  .space 1
 
 ;-------------------------------------------------------------------------------
 ; Stack Pointer definition
